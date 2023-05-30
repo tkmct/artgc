@@ -10,30 +10,7 @@
 //! Input gate, Add gate, Mul gate can be input to other gates.
 //! Output gate cannot be input to other gates
 
-// TODO: remove
-// use std::fmt::Debug;
-// use std::ops::{Add, Mul};
-
 use crate::error::{CircuitError, CircuitResult};
-
-// TODO: remove Ring to garbling instance
-// /// T is Ring
-// /// Ring defines addition and multiplication in Group
-// pub trait Ring:
-//     Sized
-//     + Eq
-//     + Copy
-//     + Clone
-//     + Send
-//     + Sync
-//     + Debug
-//     + 'static
-//     + Add<Output = Self>
-//     + Mul<Output = Self>
-//     + for<'a> Add<&'a Self, Output = Self>
-//     + for<'a> Mul<&'a Self, Output = Self>
-// {
-// }
 
 /// Wire is a representation of a value carrier in garbled circuit.
 /// It does not carry a value directly. Rather, it has encoded representation of the value called label.
@@ -43,9 +20,9 @@ use crate::error::{CircuitError, CircuitResult};
 #[derive(Clone, Copy)]
 pub struct WireId(usize);
 
-impl WireId {
-    fn new(id: usize) -> Self {
-        Self(id)
+impl From<usize> for WireId {
+    fn from(val: usize) -> Self {
+        WireId(val)
     }
 }
 
@@ -93,6 +70,7 @@ impl Circuit {
             inputs: vec![],
             outputs: vec![],
             gates: vec![],
+
             wire_count: 0,
             gate_count: 0,
         }
@@ -114,44 +92,34 @@ impl Circuit {
         Ok(())
     }
 
-    /// Create a gate and add it to
+    /// Create a gate and add it to circuit
+    /// gate_type: Type of Gate. GateType::Add or GateType::Mul
+    /// x_id: WireId of the first operand of the gate
+    /// y_id: WireId of the second operand of the gate
+    ///
     pub fn add_gate(
         &mut self,
         gate_type: GateType,
-        x_id: usize,
-        y_id: usize,
-        out_id: usize,
+        x_id: WireId,
+        y_id: WireId,
+        out_id: WireId,
     ) -> usize {
         let id = self.gate_count;
         let gate = match gate_type {
             GateType::Add => Gate::Add {
                 id,
-                x: WireId(x_id),
-                y: WireId(y_id),
-                out: WireId(out_id),
+                x: x_id,
+                y: y_id,
+                out: out_id,
             },
             GateType::Mul => Gate::Mul {
                 id,
-                x: WireId(x_id),
-                y: WireId(y_id),
-                out: WireId(out_id),
+                x: x_id,
+                y: y_id,
+                out: out_id,
             },
         };
 
-        self.gates.push(gate);
-        self.gate_count += 1;
-
-        id
-    }
-
-    pub fn add_mul_gate(&mut self, x_id: usize, y_id: usize, out_id: usize) -> usize {
-        let id = self.gate_count;
-        let gate = Gate::Mul {
-            id,
-            x: WireId(x_id),
-            y: WireId(y_id),
-            out: WireId(out_id),
-        };
         self.gates.push(gate);
         self.gate_count += 1;
 
@@ -160,26 +128,22 @@ impl Circuit {
 
     /// Create a wire with a given value.
     /// Increment self.wire_len and return the wire instance.
-    fn create_wire(&mut self) -> WireId {
-        let wire_id = WireId::new(self.wire_count);
+    pub fn create_new_wire(&mut self) -> WireId {
+        let wire_id = WireId::from(self.wire_count);
         self.wire_count += 1;
         wire_id
     }
 
     /// Create a wire instance and push it to the inputs vector.
     /// Return id of the newly created wire.
-    pub fn add_input(&mut self) -> WireId {
-        let wire_id = self.create_wire();
+    pub fn mark_input(&mut self, wire_id: WireId) {
         self.inputs.push(wire_id);
-        wire_id
     }
 
     /// Create a wire instance and push it to the outputs vector.
     /// Return id of the newly created wire.
-    pub fn add_output(&mut self) -> WireId {
-        let wire_id = self.create_wire();
+    pub fn mark_output(&mut self, wire_id: WireId) {
         self.outputs.push(wire_id);
-        wire_id
     }
 }
 
@@ -187,7 +151,7 @@ impl Circuit {
 mod tests {
     use super::*;
     use crate::error::CircuitError;
-    use ff::{Field, PrimeField};
+    use ff::PrimeField;
 
     // Use finite field as a Ring
     // ff implements similar
@@ -200,15 +164,20 @@ mod tests {
     #[test]
     fn simple_valid_circuit() {
         let mut circuit = Circuit::new();
-        circuit.add_input();
-        circuit.add_output();
+        let input = circuit.create_new_wire();
+        circuit.mark_input(input);
+
+        let output = circuit.create_new_wire();
+        circuit.mark_output(output);
+
         assert!(circuit.is_valid().is_ok());
     }
 
     #[test]
     fn circuit_without_input_should_be_invalid() {
         let mut circuit = Circuit::new();
-        circuit.add_output();
+        let output = circuit.create_new_wire();
+        circuit.mark_output(output);
         let res = circuit.is_valid();
         assert!(res.is_err());
         assert_eq!(res, Err(CircuitError::EmptyInput));
@@ -217,7 +186,9 @@ mod tests {
     #[test]
     fn circuit_without_output_should_be_invalid() {
         let mut circuit = Circuit::new();
-        circuit.add_input();
+        let input = circuit.create_new_wire();
+        circuit.mark_input(input);
+
         let res = circuit.is_valid();
         assert!(res.is_err());
         assert_eq!(res, Err(CircuitError::EmptyOutput));
