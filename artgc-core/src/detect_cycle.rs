@@ -1,4 +1,5 @@
 use crate::circuit::{Circuit, Gate, WireId};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 struct WireConnection {
@@ -23,7 +24,7 @@ impl Default for WireConnection {
 /// If it has any, returns pair of gate id and wire id of the starting node of the cycle.
 ///
 /// Do Depth First Search to detect cyclic path in a circuit
-pub fn check_cycles(circuit: &Circuit) -> Option<(usize, WireId)> {
+pub fn detect_cycle(circuit: &Circuit) -> Option<(usize, WireId)> {
     // prepare DFS
     // scan all the gates and store how gates are connected.
     let mut wire_connections = vec![WireConnection::default(); circuit.get_wire_count()];
@@ -41,7 +42,6 @@ pub fn check_cycles(circuit: &Circuit) -> Option<(usize, WireId)> {
 
     let mut gate_visited = vec![0; circuit.get_gate_count()];
     let gates = circuit.get_all_gates();
-    println!("wire_connections: {:?}", wire_connections);
 
     // Do DFS
     fn dfs(
@@ -51,7 +51,6 @@ pub fn check_cycles(circuit: &Circuit) -> Option<(usize, WireId)> {
         gate_visited: &mut Vec<usize>,
         wire_connections: &Vec<WireConnection>,
     ) -> Option<(usize, usize)> {
-        println!("gate_visited: {:?}", gate_visited);
         let gate = &gates[gate_id];
         let (id, out): (usize, usize) = match gate {
             Gate::Add { id, out, .. } => (*id, out.into()),
@@ -78,10 +77,21 @@ pub fn check_cycles(circuit: &Circuit) -> Option<(usize, WireId)> {
         None
     }
 
-    // TODO: iterate through all input gates
-    let s = 0;
-    if let Some((gate_id, wire_id)) = dfs(s, 0, gates, &mut gate_visited, &wire_connections) {
-        return Some((gate_id, WireId::from(wire_id)));
+    let circuit_inputs = circuit.get_all_inputs();
+    let mut input_gates = HashSet::<usize>::new();
+
+    for i in circuit_inputs.iter() {
+        let id: usize = i.into();
+        if let Some(conn) = wire_connections.get(id) {
+            for id in conn.to_ids.iter() {
+                input_gates.insert(*id);
+            }
+        }
+    }
+    for g in input_gates.into_iter() {
+        if let Some((gate_id, wire_id)) = dfs(g, 0, gates, &mut gate_visited, &wire_connections) {
+            return Some((gate_id, WireId::from(wire_id)));
+        }
     }
 
     None
@@ -89,7 +99,7 @@ pub fn check_cycles(circuit: &Circuit) -> Option<(usize, WireId)> {
 
 #[cfg(test)]
 mod tests {
-    use super::check_cycles;
+    use super::detect_cycle;
     use crate::circuit::*;
 
     #[test]
@@ -127,7 +137,7 @@ mod tests {
         circuit.mark_input(in3);
         circuit.mark_output(out2);
 
-        assert_eq!(check_cycles(&circuit), None, "No cycle should be detected.");
+        assert_eq!(detect_cycle(&circuit), None, "No cycle should be detected.");
     }
 
     #[test]
@@ -163,6 +173,47 @@ mod tests {
         circuit.mark_input(x2_id);
         circuit.mark_output(out1_id);
 
-        assert!(check_cycles(&circuit).is_some(), "Cycle should be detected");
+        assert!(detect_cycle(&circuit).is_some(), "Cycle should be detected");
+    }
+
+    #[test]
+    fn circuit_with_a_cycle_2() {
+        //
+        //       `out0`         `out1`
+        //          │     ┌───────┼──────────────┐
+        //        ┌───┐   │       │              │
+        //  gate0 │ + │   │     ┌───┐            │
+        //        └───┘   │     │ + │ gate1      │
+        //    ┌────┘ └────┘     └───┘            │
+        //    │             ┌────┘ └───────┐     │
+        //  `in0`           │       `mid0` │     │
+        //                `in1`          ┌───┐   │
+        //                         gate2 │ + │   │
+        //                               └───┘   │
+        //                          ┌─────┘ └────┘
+        //                          │
+        //                        `in2`
+        //
+        let mut circuit = Circuit::new();
+
+        // create gate1
+        let in0 = circuit.create_new_wire();
+        let in1 = circuit.create_new_wire();
+        let in2 = circuit.create_new_wire();
+        let mid0 = circuit.create_new_wire();
+        let out0 = circuit.create_new_wire();
+        let out1 = circuit.create_new_wire();
+
+        let _gate0 = circuit.add_gate(GateType::Add, in0, out1, out0);
+        let _gate1 = circuit.add_gate(GateType::Add, in1, mid0, out1);
+        let _gate2 = circuit.add_gate(GateType::Add, in2, out1, mid0);
+
+        circuit.mark_input(in0);
+        circuit.mark_input(in1);
+        circuit.mark_input(in2);
+        circuit.mark_output(out0);
+        circuit.mark_output(out1);
+
+        assert!(detect_cycle(&circuit).is_some(), "Cycle should be detected");
     }
 }
