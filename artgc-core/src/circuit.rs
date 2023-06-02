@@ -17,7 +17,7 @@ use crate::error::{CircuitError, CircuitResult};
 /// In this specific instance of wire, we only have an id so that the two party can agree on the structure of
 /// the circuit they are talking about.
 // TODO: have a hashability by adding Derive serde
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WireId(usize);
 
 impl From<usize> for WireId {
@@ -26,7 +26,20 @@ impl From<usize> for WireId {
     }
 }
 
+impl Into<usize> for WireId {
+    fn into(self) -> usize {
+        self.0
+    }
+}
+
+impl<'a> Into<usize> for &'a WireId {
+    fn into(self) -> usize {
+        self.0
+    }
+}
+
 /// A gate has id, input x, input y and out as members.
+/// TODO: define Binary operation as a type
 pub enum Gate {
     Add {
         id: usize,
@@ -65,6 +78,7 @@ pub struct Circuit {
 }
 
 impl Circuit {
+    // TODO: should make CircuitBuilder to do circuit construction
     pub fn new() -> Self {
         Circuit {
             inputs: vec![],
@@ -74,6 +88,30 @@ impl Circuit {
             wire_count: 0,
             gate_count: 0,
         }
+    }
+
+    pub fn get_wire_count(&self) -> usize {
+        self.wire_count
+    }
+
+    pub fn get_gate_count(&self) -> usize {
+        self.gate_count
+    }
+
+    pub fn get_all_gates(&self) -> &[Gate] {
+        &self.gates
+    }
+
+    pub fn get_gate(&self, id: usize) -> Option<&Gate> {
+        self.gates.get(id)
+    }
+
+    pub fn get_all_inputs(&self) -> &[WireId] {
+        &self.inputs
+    }
+
+    pub fn get_all_outputs(&self) -> &[WireId] {
+        &self.outputs
     }
 
     /// Check if given circuit is valid circuit.
@@ -87,6 +125,8 @@ impl Circuit {
             return Err(CircuitError::EmptyInput);
         } else if self.outputs.is_empty() {
             return Err(CircuitError::EmptyOutput);
+            // } else if let Some(cycles) = check_cycles(self) {
+            //     return Err();
         }
 
         Ok(())
@@ -94,9 +134,9 @@ impl Circuit {
 
     /// Create a gate and add it to circuit
     /// gate_type: Type of Gate. GateType::Add or GateType::Mul
-    /// x_id: WireId of the first operand of the gate
-    /// y_id: WireId of the second operand of the gate
-    ///
+    /// x_id: wire id of the first input of the gate
+    /// y_id: wire id of the second input of the gate
+    /// out_id: id of the wire of output from this gate
     pub fn add_gate(
         &mut self,
         gate_type: GateType,
@@ -151,15 +191,6 @@ impl Circuit {
 mod tests {
     use super::*;
     use crate::error::CircuitError;
-    use ff::PrimeField;
-
-    // Use finite field as a Ring
-    // ff implements similar
-    #[derive(PrimeField)]
-    #[PrimeFieldModulus = "52435875175126190479447740508185965837690552500527637822603658699938581184513"]
-    #[PrimeFieldGenerator = "7"]
-    #[PrimeFieldReprEndianness = "little"]
-    struct Fp([u64; 4]);
 
     #[test]
     fn simple_valid_circuit() {
@@ -170,7 +201,7 @@ mod tests {
         let output = circuit.create_new_wire();
         circuit.mark_output(output);
 
-        assert!(circuit.is_valid().is_ok());
+        assert!(circuit.is_valid().is_ok(), "Circuit should be valid");
     }
 
     #[test]
@@ -179,8 +210,12 @@ mod tests {
         let output = circuit.create_new_wire();
         circuit.mark_output(output);
         let res = circuit.is_valid();
-        assert!(res.is_err());
-        assert_eq!(res, Err(CircuitError::EmptyInput));
+        assert!(res.is_err(), "Circuit should be invalid");
+        assert_eq!(
+            res,
+            Err(CircuitError::EmptyInput),
+            "Result should be CircuitError::EmptyInput"
+        );
     }
 
     #[test]
@@ -190,7 +225,11 @@ mod tests {
         circuit.mark_input(input);
 
         let res = circuit.is_valid();
-        assert!(res.is_err());
-        assert_eq!(res, Err(CircuitError::EmptyOutput));
+        assert!(res.is_err(), "Circuit should be invalid");
+        assert_eq!(
+            res,
+            Err(CircuitError::EmptyOutput),
+            "Result should be CircuitError::EmptyOutput"
+        );
     }
 }

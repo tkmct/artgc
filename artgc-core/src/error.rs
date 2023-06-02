@@ -4,6 +4,7 @@ use std::fmt::Display;
 pub enum CircuitError {
     EmptyInput,
     EmptyOutput,
+    CyclicPath { gate_id: usize, wire_id: usize },
 }
 
 pub type CircuitResult<E> = Result<E, CircuitError>;
@@ -18,6 +19,13 @@ impl Display for CircuitError {
             }
             CircuitError::EmptyOutput => {
                 write!(f, "This circuit has no output.")
+            }
+            CircuitError::CyclicPath { gate_id, wire_id } => {
+                write!(
+                    f,
+                    "This circuit has cyclic path. Gate with id{} has input wire with id{}.",
+                    gate_id, wire_id
+                )
             }
         }
     }
