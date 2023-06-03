@@ -39,7 +39,6 @@ impl<'a> Into<usize> for &'a WireId {
 }
 
 /// A gate has id, input x, input y and out as members.
-/// TODO: define Binary operation as a type
 pub enum Gate {
     Add {
         id: usize,

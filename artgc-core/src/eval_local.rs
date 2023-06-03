@@ -55,11 +55,8 @@ mod tests {
     struct Fp([u64; 4]);
     impl Ring for Fp {}
 
-    #[ignore]
     #[test]
     fn test_add_gate() {
-        // Maybe it's better to use builder pattern
-
         let mut circuit = Circuit::new();
 
         // This circuit has a simple add gate
@@ -81,11 +78,8 @@ mod tests {
         assert_eq!(result, Ok(vec![5.into()]), "Circuit: 2 + 3 should output 5");
     }
 
-    #[ignore]
     #[test]
     fn test_mul_gate() {
-        // Maybe it's better to use builder pattern
-
         let mut circuit = Circuit::new();
 
         // This circuit has a simple add gate
@@ -105,5 +99,39 @@ mod tests {
         let inputs: Vec<Fp> = vec![2.into(), 3.into()];
         let result = eval_local(&circuit, inputs);
         assert_eq!(result, Ok(vec![6.into()]), "Circuit: 2 * 3 should output 6");
+    }
+
+    #[test]
+    fn test_multiple_outputs() {
+        let mut circuit = Circuit::new();
+
+        // Circuit
+        // out1 = in1 + in2
+        // out2 = (in1 + in2) * in3
+
+        // gate1
+        let in1 = circuit.create_new_wire();
+        let in2 = circuit.create_new_wire();
+        let out1 = circuit.create_new_wire();
+        circuit.add_gate(GateType::Add, in1, in2, out1);
+
+        // gate2
+        let in3 = circuit.create_new_wire();
+        let out2 = circuit.create_new_wire();
+        circuit.add_gate(GateType::Mul, in3, out1, out2);
+
+        circuit.mark_input(in1);
+        circuit.mark_input(in2);
+        circuit.mark_input(in3);
+        circuit.mark_output(out1);
+        circuit.mark_output(out2);
+
+        let inputs: Vec<Fp> = vec![1.into(), 2.into(), 3.into()];
+        let result = eval_local(&circuit, inputs);
+        assert_eq!(
+            result,
+            Ok(vec![3.into(), 9.into()]),
+            "Circuit output2 two values: [3, 9]"
+        );
     }
 }
