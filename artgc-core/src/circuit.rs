@@ -3,12 +3,9 @@
 //! Interemediate wires act as edges of the DAG.
 //!
 //! Input wire: Starting nodes. Carry a single value. Either Variable or Constant in F
-//! Output wire: Ending nodes. One input, no output.
+//! Output wire: Ending nodes.
 //! Add gate: Two input, one output. Calculate addition of two input values.
 //! Mul gate: Two input, one output. Calculate multiplication of two input values.
-//
-//! Input gate, Add gate, Mul gate can be input to other gates.
-//! Output gate cannot be input to other gates
 
 use crate::error::{CircuitError, CircuitResult};
 
