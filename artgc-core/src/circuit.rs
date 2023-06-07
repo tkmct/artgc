@@ -18,7 +18,7 @@ use crate::error::{CircuitError, CircuitResult};
 /// the circuit they are talking about.
 // TODO: have a hashability by adding Derive serde
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct WireId(usize);
+pub struct WireId(pub usize);
 
 impl From<usize> for WireId {
     fn from(val: usize) -> Self {
@@ -52,6 +52,22 @@ pub enum Gate {
         y: WireId,
         out: WireId,
     },
+}
+
+impl Gate {
+    pub fn get_output(&self) -> WireId {
+        match self {
+            Gate::Add { out, .. } => *out,
+            Gate::Mul { out, .. } => *out,
+        }
+    }
+
+    pub fn get_inputs(&self) -> (WireId, WireId) {
+        match self {
+            Gate::Add { x, y, .. } => (*x, *y),
+            Gate::Mul { x, y, .. } => (*x, *y),
+        }
+    }
 }
 
 pub enum GateType {

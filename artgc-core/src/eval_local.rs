@@ -1,5 +1,6 @@
-use crate::circuit::Circuit;
+use crate::circuit::{Circuit, GateType};
 use crate::ring::Ring;
+use std::cmp::max;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum EvalLocalError {
@@ -9,18 +10,20 @@ pub enum EvalLocalError {
 /// In order to keep track of wire value and layer
 /// evaluating the gate requires the all the input wires
 /// have to have actual values
-#[derive(Clone, Copy)]
-struct Wire<T> {
+/// Wires marked as inputs of the circuit have layer as 0
+/// Output wires of gates have layer number of max(input1_layer, input2_layer) + 1.
+#[derive(Clone, Copy, Debug)]
+struct Wire<T: Ring> {
     pub layer: Option<usize>,
     pub value: Option<T>,
 }
 
-/// This method simply evaluates a given circuit with given inputs locally.
-/// It doesn't involve any circuit garbling or networking operations.
-/// Mostly used for debugging purpose
-pub fn eval_local<T: Ring>(circuit: &Circuit, _inputs: Vec<T>) -> Result<Vec<T>, EvalLocalError> {
-    // variable to keep track of actual wire values of type T and layer number
-    let wires: Vec<Wire<T>> = vec![
+/// Returns information related to layer of gates and wire
+/// scan the circuit and put layer number to all gates and wires.
+/// First element of returend tuple is vector of vector of gate_id.
+/// Gates are grouped with layer number represented with index of outer vector.
+fn label_wires_with_layer<T: Ring>(circuit: &Circuit) -> (Vec<Vec<usize>>, Vec<Wire<T>>) {
+    let mut wires = vec![
         Wire {
             layer: None,
             value: None
@@ -28,8 +31,88 @@ pub fn eval_local<T: Ring>(circuit: &Circuit, _inputs: Vec<T>) -> Result<Vec<T>,
         circuit.get_wire_count()
     ];
 
-    // put layer number to each wire as following rule.
-    // 1. put 0 to wire marked as input
+    let mut gate_layers: Vec<Vec<usize>> = vec![];
+
+    // put 0 to input layer
+    let input_wires = circuit.get_all_inputs();
+    for input in input_wires {
+        wires[input.0].layer = Some(0);
+    }
+
+    let gates = circuit.get_all_gates();
+
+    // iterate through gates until all of the wire has layer value
+    // TODO: optimize iteration
+    let mut i = 0;
+    while !wires.iter().all(|w| w.layer.is_some()) {
+        let wire_id = gates[i].get_output();
+        let wire = wires[wire_id.0];
+
+        if !wire.layer.is_some() {
+            // check if the two input wires of the gate has layer or not
+            let (x, y) = gates[i].get_inputs();
+            let x_layer = wires[x.0].layer;
+            let y_layer = wires[y.0].layer;
+            if x_layer.is_some() && y_layer.is_some() {
+                let current_layer = max(x_layer.unwrap(), y_layer.unwrap());
+                wires[wire_id.0].layer = Some(current_layer + 1);
+
+                // TODO: possible skip if optimization is set to true
+                // provide max layer number using config file
+                if gate_layers.get(current_layer).is_none() {
+                    gate_layers.resize(current_layer + 1, Vec::<usize>::new());
+                }
+                gate_layers.get_mut(current_layer).unwrap().push(i);
+            }
+        }
+
+        if i == wires.len() - 1 {
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+
+    return (gate_layers, wires);
+}
+
+/// This method simply evaluates a given circuit with given inputs locally.
+/// It doesn't involve any circuit garbling or networking operations.
+/// Mostly used for debugging purpose
+pub fn eval_local<T: Ring>(
+    circuit: &Circuit,
+    input_values: Vec<T>,
+) -> Result<Vec<T>, EvalLocalError> {
+    // variable to keep track of actual wire values of type T and layer number
+    // put layer number to all layers and gates
+    let (gate_layers, mut wires) = label_wires_with_layer::<T>(circuit);
+    println!("gate_layers: {:?}, wires: {:?}", gate_layers, wires);
+
+    let all_gates = circuit.get_all_gates();
+    let all_inputs = circuit.get_all_inputs();
+
+    // put value to input wires
+    for (i, wire_id) in all_inputs.into_iter().enumerate() {
+        let wire = wires.get_mut(wire_id.0).unwrap();
+        wire.value = Some(input_values[i]);
+    }
+
+    for current_layer in 0..(gate_layers.len()) {
+        for gate_id in gate_layers[current_layer].iter() {
+            let gate = &all_gates[*gate_id];
+            let (in1, in2) = gate.get_inputs();
+            let out = gate.get_output();
+
+            let in1 = wires.get(in1.0).unwrap().value.unwrap();
+            let in2 = wires.get(in2.0).unwrap().value.unwrap();
+            let mut out = wires.get_mut(out.0).unwrap();
+
+            out.value = match gate.gate_type() {
+                GateType::Add => Some(in1 + in2),
+                GateType::Mul => Some(in1 * in2),
+            };
+        }
+    }
 
     // check if all the gates are evaluated
     let res = wires.iter().all(|w| w.value.is_some() && w.layer.is_some());
@@ -37,7 +120,11 @@ pub fn eval_local<T: Ring>(circuit: &Circuit, _inputs: Vec<T>) -> Result<Vec<T>,
         return Err(EvalLocalError::EmptyWire);
     }
 
-    Ok(vec![])
+    Ok(circuit
+        .get_all_outputs()
+        .iter()
+        .map(|out| wires.get(out.0).unwrap().value.unwrap())
+        .collect())
 }
 
 #[cfg(test)]
