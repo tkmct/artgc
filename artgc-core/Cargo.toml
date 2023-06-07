@@ -3,9 +3,5 @@ name = "artgc-core"
 version = "0.1.0"
 edition = "2021"
 
-
-[features]
-debug = []
-
 [dependencies]
 ff = { version = "0.13.0", features = ["derive"] }
